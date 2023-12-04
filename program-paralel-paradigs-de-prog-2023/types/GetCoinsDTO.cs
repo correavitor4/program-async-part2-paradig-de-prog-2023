@@ -32,4 +32,6 @@ public struct GetCoinsDtoDataCoin
     public string Name { get; set; }
     [JsonPropertyName("price")]
     public string Price { get; set; }
+    [JsonPropertyName("sparkline")]
+    public List<string>? SparkLine { get; set; }
 }
