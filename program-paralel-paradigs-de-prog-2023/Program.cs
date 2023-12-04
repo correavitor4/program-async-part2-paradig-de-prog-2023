@@ -1,5 +1,6 @@
 ﻿// See https://aka.ms/new-console-template for more information
 
+using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
 using program_paralel_paradigs_de_prog_2023.types;
@@ -7,7 +8,7 @@ using program_paralel_paradigs_de_prog_2023.types;
 const string baseUrl = "https://api.coinranking.com/v2";
 const int maxNumberOfCoinsInOneRequest = 100;
 const int numberOfCoins = 2000;
-const int numberOfThreads = 5;
+const int numberOfThreads = 4;
 const int numberOfIterations = numberOfCoins / maxNumberOfCoinsInOneRequest / numberOfThreads;
 
 //MemoryArray
@@ -36,22 +37,25 @@ async Task<List<Coin>> GetCoins(int limit = 50, int offset = 0)
 {
     var url = baseUrl + $"/coins?limit={limit}&offset={offset}";
     var httpClient = new HttpClient();
-    httpClient.DefaultRequestHeaders.Add("x-rapidapi-key", "e124e6813amshb1ba840f6ba34f3p172562jsn119ca6eab0e4");
-    httpClient.DefaultRequestHeaders.Add("x-rapidapi-host", "coinranking1.p.rapidapi.com");
+    // httpClient.DefaultRequestHeaders.Add("x-rapidapi-key", "e124e6813amshb1ba840f6ba34f3p172562jsn119ca6eab0e4");
+    httpClient.DefaultRequestHeaders.Add("x-access-token", "coinranking30fe1ce33b2846e20bafba208fbf4ee4ac40e3eb891bac29");
 
     try
     {
+        var sw = new Stopwatch();
+        sw.Start();
         var response = await httpClient.GetAsync(url);
+        sw.Stop();
         if (response.StatusCode != HttpStatusCode.OK)
         {
-            if (response.StatusCode != HttpStatusCode.TooManyRequests) throw new Exception("Error getting coins");
-            
-            // Console.WriteLine("Too many requests, waiting 1 second");
-            // await Task.Delay(1000);
-            return await GetCoins(limit, offset);
+            if (response.StatusCode != HttpStatusCode.TooManyRequests) throw new Exception("Error getting coins: to many requests");
         }
+        
+        if (sw.ElapsedMilliseconds > 1000) Console.WriteLine($"Coin ranking demorou {sw.ElapsedMilliseconds}ms para responder");
+        
         var responseString = await response.Content.ReadAsStringAsync();
         var getCoinsDto = JsonSerializer.Deserialize<GetCoinsDto>(responseString);
+
         var coinsDto = getCoinsDto.Data.Coins 
                     ?? throw new Exception("Error getting coins: null");
         var coins = GetCoinsDtoDataCoinsToCoin(coinsDto);
@@ -102,8 +106,3 @@ for (var i=0; i< numberOfIterations; i++)
 }
 
 
-//2. sort coins
-foreach (var coin in memoryArray)
-{
-    Console.WriteLine($"{coin.Name} - {coin.Symbol} - {coin.Price}");
-}
