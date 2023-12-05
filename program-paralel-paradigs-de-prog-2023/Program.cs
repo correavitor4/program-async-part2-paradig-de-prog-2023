@@ -146,6 +146,8 @@ async Task<List<Cluster>> AssociateCoinsToClusters(List<Cluster> clustersList)
         
         await Task.WhenAll(tasksList);
         var distances = tasksList.Select(task => task.Result).ToList();
+        if (distances is null) throw new Exception("Distances is null");
+        if (distances.Count == 0) throw new Exception("Distances is empty");
         var minDistance = distances.Min();
         var clusterIndex = distances.IndexOf(minDistance);
         var clusterToModify = clustersList[clusterIndex];
@@ -157,6 +159,45 @@ async Task<List<Cluster>> AssociateCoinsToClusters(List<Cluster> clustersList)
     return clustersList;
 }
 
+Tuple<List<Cluster>, bool> CalculateNewCentroidsOfEachCluster(List<Cluster> clusters)
+{
+    var newClusters = new List<Cluster>();
+    var hasChanged = false;
+    foreach (var cluster in clusters)
+    {
+        if (cluster.Coins is null) throw new Exception("Cluster coins is null");
+
+        var nDimensions = cluster.Coins[0].SparkLine!.Count;
+        var newCentroid = new List<decimal>();
+        
+        for (var i = 0; i < nDimensions; i++)
+        {
+            newCentroid.Add(0);
+        }
+        
+        foreach (var coin in cluster.Coins)
+        {
+            if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
+            
+            for (var i = 0; i < nDimensions; i++)
+            {
+                newCentroid[i] += coin.SparkLine[i];
+            }
+        }
+        
+        for (var i = 0; i < nDimensions; i++)
+        {
+            newCentroid[i] /= cluster.Coins.Count;
+        }
+        
+        // Compare each centroid of old and new clusters
+        hasChanged = !cluster.CentroidSparkLine.SequenceEqual(newCentroid);
+        
+        newClusters.Add(new Cluster(newCentroid));
+    }
+
+    return new Tuple<List<Cluster>, bool>(newClusters, hasChanged);
+}
 #endregion
 
 //1. get coins
@@ -182,8 +223,22 @@ memoryArray = memoryArray.Where(coin => coin.SparkLine.Count == 24).ToList();
 #region Kmeans
 
 //. Start K-means
+// 1. Start clusters with random positions
 var clustersList = StartClustersList(numberOfClusters: 10);
-clustersList = await AssociateCoinsToClusters(clustersList);
 
-Console.WriteLine("Aaaaa");
+// 2. Start iterations
+var hasChanged = false;
+do
+{
+    // 2.1 Associate each coin to the nearest cluster
+    clustersList = await AssociateCoinsToClusters(clustersList);
+    
+    // 2.2 Calculate new centroids
+    var response = CalculateNewCentroidsOfEachCluster(clustersList);
+    clustersList = response.Item1;
+    hasChanged = response.Item2;
+} 
+while (hasChanged);
+
+Console.WriteLine("Complete");
 #endregion
