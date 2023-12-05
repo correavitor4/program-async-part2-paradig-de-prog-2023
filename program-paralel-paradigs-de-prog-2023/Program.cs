@@ -6,6 +6,10 @@ using System.Net;
 using System.Text.Json;
 using program_paralel_paradigs_de_prog_2023.types;
 
+//Const config
+const bool shouldCopyMemoryArray = true;
+const int numberOfCopies = 10;
+
 const string baseUrl = "https://api.coinranking.com/v2";
 const int maxNumberOfCoinsInOneRequest = 100;
 const int numberOfCoins = 4000;
@@ -159,42 +163,53 @@ async Task<List<Cluster>> AssociateCoinsToClusters(List<Cluster> clustersList)
     return clustersList;
 }
 
-Tuple<List<Cluster>, bool> CalculateNewCentroidsOfEachCluster(List<Cluster> clusters)
+async Task<Tuple<List<Cluster>, bool>> CalculateNewCentroidsOfEachCluster(List<Cluster> clusters)
 {
     var newClusters = new List<Cluster>();
     var hasChanged = false;
+    var taskList = new List<Task>();
     foreach (var cluster in clusters)
     {
-        if (cluster.Coins is null) throw new Exception("Cluster coins is null");
+        var task = new Task(() =>
+        {
+            if (cluster.Coins is null) throw new Exception("Cluster coins is null");
 
-        var nDimensions = cluster.Coins[0].SparkLine!.Count;
-        var newCentroid = new List<decimal>();
+            var nDimensions = cluster.Coins[0].SparkLine!.Count;
+            var newCentroid = new List<decimal>();
         
-        for (var i = 0; i < nDimensions; i++)
-        {
-            newCentroid.Add(0);
-        }
-        
-        foreach (var coin in cluster.Coins)
-        {
-            if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
-            
             for (var i = 0; i < nDimensions; i++)
             {
-                newCentroid[i] += coin.SparkLine[i];
+                newCentroid.Add(0);
             }
-        }
         
-        for (var i = 0; i < nDimensions; i++)
-        {
-            newCentroid[i] /= cluster.Coins.Count;
-        }
+            foreach (var coin in cluster.Coins)
+            {
+                if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
+            
+                for (var i = 0; i < nDimensions; i++)
+                {
+                    newCentroid[i] += coin.SparkLine[i];
+                }
+            }
         
-        // Compare each centroid of old and new clusters
-        hasChanged = !cluster.CentroidSparkLine.SequenceEqual(newCentroid);
+            for (var i = 0; i < nDimensions; i++)
+            {
+                newCentroid[i] /= cluster.Coins.Count;
+            }
+            
+            // Compare each centroid of old and new clusters
+            hasChanged = !cluster.CentroidSparkLine.SequenceEqual(newCentroid);
         
-        newClusters.Add(new Cluster(newCentroid));
+            newClusters.Add(new Cluster(newCentroid));
+        });
     }
+    
+    foreach (var task in taskList)
+    {
+        task.Start();
+    }
+
+    await Task.WhenAll();
 
     return new Tuple<List<Cluster>, bool>(newClusters, hasChanged);
 }
@@ -219,6 +234,13 @@ memoryArray = memoryArray.Where(coin => coin.SparkLine is not null).ToList();
 //Remove coins with sparklines with size is not 24
 memoryArray = memoryArray.Where(coin => coin.SparkLine.Count == 24).ToList();
 
+if (shouldCopyMemoryArray)
+{
+    for (var i = 0; i < numberOfCopies; i++)
+    {
+        memoryArray.AddRange(memoryArray);
+    }
+}
 
 #region Kmeans
 
@@ -234,7 +256,7 @@ do
     clustersList = await AssociateCoinsToClusters(clustersList);
     
     // 2.2 Calculate new centroids
-    var response = CalculateNewCentroidsOfEachCluster(clustersList);
+    var response = await CalculateNewCentroidsOfEachCluster(clustersList);
     clustersList = response.Item1;
     hasChanged = response.Item2;
 } 
