@@ -2,7 +2,7 @@
 
 namespace program_paralel_paradigs_de_prog_2023.types;
 
-public class Coin
+public struct Coin
 {
     public string Uuid { get; set; }
     public string Symbol { get; set; }

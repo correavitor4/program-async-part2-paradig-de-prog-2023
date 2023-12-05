@@ -8,7 +8,7 @@ using program_paralel_paradigs_de_prog_2023.types;
 
 const string baseUrl = "https://api.coinranking.com/v2";
 const int maxNumberOfCoinsInOneRequest = 100;
-const int numberOfCoins = 2000;
+const int numberOfCoins = 4000;
 const int numberOfThreads = 4;
 const int numberOfIterations = numberOfCoins / maxNumberOfCoinsInOneRequest / numberOfThreads;
 
@@ -66,7 +66,7 @@ List<Coin> GetCoinsDtoDataCoinsToCoin(GetCoinsDtoDataCoin[] coinsDto)
             Name = coinDto.Name, 
             Symbol = coinDto.Symbol, 
             Price = float.Parse(coinDto.Price), 
-            SparkLine = coinDto.SparkLine is null || coinDto.SparkLine.Any(string.IsNullOrEmpty) ? null : StringSparkLineToDecimal(coinDto.SparkLine)
+            SparkLine = coinDto.SparkLine is null ? null : StringSparkLineToDecimal(coinDto.SparkLine)
         }).ToList();
 }
 
@@ -76,6 +76,8 @@ List<decimal>? StringSparkLineToDecimal(List<string> sparkline)
 
     foreach (var spark in sparkline)
     {
+        if (string.IsNullOrEmpty(spark)) continue;
+        
         decimal valueInDecimal;
         if (decimal.TryParse(spark, NumberStyles.Float, CultureInfo.InvariantCulture, out valueInDecimal))
         {
@@ -104,27 +106,55 @@ List<Cluster> StartClustersList(int numberOfClusters)
 
 Cluster StartClusterWithRandomPosition()
 {
-    decimal minValue = 0;
-    decimal maxValue = 0;
+    var memoryArraySize = memoryArray.Count;
     
+    // Cluster will start with a random coin value position
+    var randomCoinPosition = GetRandomNumber(0, memoryArraySize);
+    Coin coin;
+    
+    do 
+    {
+        randomCoinPosition = GetRandomNumber(0, memoryArraySize);
+        coin = memoryArray[randomCoinPosition];
+    } while (coin.SparkLine is null);
+    
+    if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
+    
+    return new Cluster(coin.SparkLine);
+
+}
+
+int GetRandomNumber(int min, int max)
+{
+    var random = new Random();
+    return random.Next(min, max);
+}
+
+async Task<List<Cluster>> AssociateCoinsToClusters(List<Cluster> clustersList)
+{
+    //Will associate each coin to the nearest cluster
     foreach (var coin in memoryArray)
     {
-        if (coin.MinValueInPeriodTime < minValue)
+        var tasksList = new List<Task<decimal>>();
+        foreach (var cluster in clustersList)
         {
-            minValue = coin.MinValueInPeriodTime;
+            if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
+            
+            var task = cluster.CalculateDistanceToCoin(coin.SparkLine);
+            tasksList.Add(task);
         }
-
-        if (coin.MaxValueInPeriodTime > maxValue)
-        {
-            maxValue = coin.MaxValueInPeriodTime;
-        }
+        
+        await Task.WhenAll(tasksList);
+        var distances = tasksList.Select(task => task.Result).ToList();
+        var minDistance = distances.Min();
+        var clusterIndex = distances.IndexOf(minDistance);
+        var clusterToModify = clustersList[clusterIndex];
+        if (clusterToModify.Coins is null) clusterToModify.Coins = new List<Coin>();
+        clusterToModify.Coins.Add(coin);
+        clustersList[clusterIndex] = clusterToModify;
     }
-    
-    return new Cluster()
-    {
-        MinValue = minValue,
-        MaxValue = maxValue,
-    };
+
+    return clustersList;
 }
 
 #endregion
@@ -142,15 +172,18 @@ for (var i=0; i< numberOfIterations; i++)
     await Task.Delay(1000);
 }
 
-// 2. Remove coins with null sparklines (if exist)
+// Remove coins with null sparklines (if exist)
 memoryArray = memoryArray.Where(coin => coin.SparkLine is not null).ToList();
+
+//Remove coins with sparklines with size is not 24
+memoryArray = memoryArray.Where(coin => coin.SparkLine.Count == 24).ToList();
+
 
 #region Kmeans
 
 //. Start K-means
-var numberOfClusters = 10;
-var clustersList = StartClustersList();
+var clustersList = StartClustersList(numberOfClusters: 10);
+clustersList = await AssociateCoinsToClusters(clustersList);
 
-//Define clusters random position
-
+Console.WriteLine("Aaaaa");
 #endregion
