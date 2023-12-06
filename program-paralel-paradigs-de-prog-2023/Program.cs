@@ -111,21 +111,19 @@ List<Cluster> StartClustersList(int numberOfClusters)
 
 Cluster StartClusterWithRandomPosition()
 {
-    var memoryArraySize = memoryArray.Count;
-    
-    // Cluster will start with a random coin value position
-    var randomCoinPosition = GetRandomNumber(0, memoryArraySize);
-    Coin coin;
-    
-    do 
+    var cluster = new Cluster();
+    cluster.CentroidSparkLine = new List<decimal>();
+    while (cluster.CentroidSparkLine.Count < sparkLineBaseCount)
     {
-        randomCoinPosition = GetRandomNumber(0, memoryArraySize);
-        coin = memoryArray[randomCoinPosition];
-    } while (coin.SparkLine is null);
-    
-    if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
-    
-    return new Cluster(coin.SparkLine);
+        decimal min = (decimal)0.1;
+        decimal max = 10;
+
+        var random = new Random();
+        var randomDecimal = min + (decimal)(random.NextDouble() * (double)(max - min));
+        cluster.CentroidSparkLine.Add(randomDecimal);
+    }
+
+    return cluster;
 
 }
 
@@ -137,6 +135,8 @@ int GetRandomNumber(int min, int max)
 
 async Task<List<Cluster>> AssociateCoinsToClusters(List<Cluster> clustersList)
 {
+    clustersList = EraseClustersCoins(clustersList);
+    
     //Will associate each coin to the nearest cluster
     foreach (var coin in memoryArray)
     {
@@ -164,6 +164,17 @@ async Task<List<Cluster>> AssociateCoinsToClusters(List<Cluster> clustersList)
     return clustersList;
 }
 
+List<Cluster> EraseClustersCoins(List<Cluster> clustersList)
+{
+    var newClustersList = new List<Cluster>();
+    foreach (var cluster in clustersList)
+    {
+        newClustersList.Add(new Cluster(cluster.CentroidSparkLine, new List<Coin>()));
+    }
+
+    return newClustersList;
+}
+
 async Task<Tuple<List<Cluster>, bool>> CalculateNewCentroidsOfEachCluster(List<Cluster> clusters)
 {
     var newClusters = new List<Cluster>();
@@ -178,7 +189,17 @@ async Task<Tuple<List<Cluster>, bool>> CalculateNewCentroidsOfEachCluster(List<C
         {
             if (cluster.Coins is null) throw new Exception("Cluster coins is null");
 
-            var nDimensions = cluster.Coins[0].SparkLine!.Count;
+            if (cluster.Coins.Count == 0)
+            {
+                lock (lockObject)
+                {
+                    newClusters.Add(cluster);
+                }
+                
+                return;
+            }
+            
+            var nDimensions = sparkLineBaseCount;
             var newCentroid = new List<decimal>();
 
             for (var i = 0; i < nDimensions; i++)
@@ -207,16 +228,23 @@ async Task<Tuple<List<Cluster>, bool>> CalculateNewCentroidsOfEachCluster(List<C
             {
                 localHasChanged = !cluster.CentroidSparkLine.SequenceEqual(newCentroid);
                 hasChanged |= localHasChanged; // Atualize a variável compartilhada
+                
+                var clusterToAdd = new Cluster(newCentroid, cluster.Coins);
+                newClusters.Add(clusterToAdd);
             }
-
-            var clusterToAdd = new Cluster(newCentroid, cluster.Coins);
-            newClusters.Add(clusterToAdd);
         });
         
         taskList.Add(task);
     }
 
+    
+
     Task.WaitAll(taskList.ToArray());
+    
+    // if (newClusters.Count < 8)
+    // {
+    //     Console.WriteLine("a");
+    // }
     
     return new Tuple<List<Cluster>, bool>(newClusters, hasChanged);
 }
@@ -271,7 +299,7 @@ if (shouldCopyMemoryArray)
 var clustersList = StartClustersList(numberOfClusters: 8);
 
 // 2. Start iterations
-var hasChanged = false;
+bool hasChanged;
 do
 {
     // 2.1 Associate each coin to the nearest cluster
