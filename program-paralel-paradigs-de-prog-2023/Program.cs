@@ -7,7 +7,7 @@ using System.Text.Json;
 using program_paralel_paradigs_de_prog_2023.types;
 
 //Const config
-const bool shouldCopyMemoryArray = true;
+const bool shouldCopyMemoryArray = false;
 const int numberOfCopies = 10;
 const int sparkLineBaseCount = 24;
 
@@ -151,8 +151,8 @@ async Task<List<Cluster>> AssociateCoinsToClusters(List<Cluster> clustersList)
         
         await Task.WhenAll(tasksList);
         var distances = tasksList.Select(task => task.Result).ToList();
-        if (distances is null) throw new Exception("Distances is null");
-        if (distances.Count == 0) throw new Exception("Distances is empty");
+        //if (distances is null) throw new Exception("Distances is null");
+        //if (distances.Count == 0) throw new Exception("Distances is empty");
         var minDistance = distances.Min();
         var clusterIndex = distances.IndexOf(minDistance);
         var clusterToModify = clustersList[clusterIndex];
@@ -169,49 +169,55 @@ async Task<Tuple<List<Cluster>, bool>> CalculateNewCentroidsOfEachCluster(List<C
     var newClusters = new List<Cluster>();
     var hasChanged = false;
     var taskList = new List<Task>();
+
+    var lockObject = new object();
+    
     foreach (var cluster in clusters)
     {
-        var task = new Task(() =>
+        var task = Task.Run(() =>
         {
             if (cluster.Coins is null) throw new Exception("Cluster coins is null");
 
             var nDimensions = cluster.Coins[0].SparkLine!.Count;
             var newCentroid = new List<decimal>();
-        
+
             for (var i = 0; i < nDimensions; i++)
             {
                 newCentroid.Add(0);
             }
-        
+
             foreach (var coin in cluster.Coins)
             {
                 if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
-            
+
                 for (var i = 0; i < nDimensions; i++)
                 {
                     newCentroid[i] += coin.SparkLine[i];
                 }
             }
-        
+
             for (var i = 0; i < nDimensions; i++)
             {
                 newCentroid[i] /= cluster.Coins.Count;
             }
-            
-            // Compare each centroid of old and new clusters
-            hasChanged = !cluster.CentroidSparkLine.SequenceEqual(newCentroid);
-        
-            newClusters.Add(new Cluster(newCentroid));
+
+            // Compare cada centróide dos clusters antigos e novos
+            bool localHasChanged;
+            lock (lockObject)
+            {
+                localHasChanged = !cluster.CentroidSparkLine.SequenceEqual(newCentroid);
+                hasChanged |= localHasChanged; // Atualize a variável compartilhada
+            }
+
+            var clusterToAdd = new Cluster(newCentroid, cluster.Coins);
+            newClusters.Add(clusterToAdd);
         });
+        
+        taskList.Add(task);
     }
+
+    Task.WaitAll(taskList.ToArray());
     
-    foreach (var task in taskList)
-    {
-        task.Start();
-    }
-
-    await Task.WhenAll();
-
     return new Tuple<List<Cluster>, bool>(newClusters, hasChanged);
 }
 
@@ -262,7 +268,7 @@ if (shouldCopyMemoryArray)
 
 //. Start K-means
 // 1. Start clusters with random positions
-var clustersList = StartClustersList(numberOfClusters: 10);
+var clustersList = StartClustersList(numberOfClusters: 8);
 
 // 2. Start iterations
 var hasChanged = false;

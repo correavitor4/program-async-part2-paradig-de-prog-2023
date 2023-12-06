@@ -5,6 +5,13 @@ namespace program_paralel_paradigs_de_prog_2023.types;
 public struct Cluster
 {
     public Cluster(
+        List<decimal> centroidSparkLine,
+        List<Coin> coins)
+    {
+        CentroidSparkLine = centroidSparkLine;
+        Coins = coins;
+    }
+    public Cluster(
         List<decimal> centroidSparkLine
     )
     {
