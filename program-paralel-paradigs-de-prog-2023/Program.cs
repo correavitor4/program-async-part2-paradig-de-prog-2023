@@ -9,6 +9,7 @@ using program_paralel_paradigs_de_prog_2023.types;
 //Const config
 const bool shouldCopyMemoryArray = true;
 const int numberOfCopies = 10;
+const int sparkLineBaseCount = 24;
 
 const string baseUrl = "https://api.coinranking.com/v2";
 const int maxNumberOfCoinsInOneRequest = 100;
@@ -213,6 +214,18 @@ async Task<Tuple<List<Cluster>, bool>> CalculateNewCentroidsOfEachCluster(List<C
 
     return new Tuple<List<Cluster>, bool>(newClusters, hasChanged);
 }
+
+void interpolate()
+{
+    foreach (var coin in memoryArray)
+    {
+        if (coin.SparkLine is null) throw new Exception("Coin sparkline is null");
+        while(coin.SparkLine.Count < sparkLineBaseCount)
+        {
+            coin.SparkLine.Add(coin.SparkLine.Last());
+        }
+    }
+}
 #endregion
 
 //1. get coins
@@ -232,7 +245,10 @@ for (var i=0; i< numberOfIterations; i++)
 memoryArray = memoryArray.Where(coin => coin.SparkLine is not null).ToList();
 
 //Remove coins with sparklines with size is not 24
-memoryArray = memoryArray.Where(coin => coin.SparkLine.Count == 24).ToList();
+memoryArray = memoryArray.Where(coin => coin.SparkLine.Count <= 24 && coin.SparkLine.Count > 10).ToList();
+
+//Interpolate sparklines
+interpolate();
 
 if (shouldCopyMemoryArray)
 {
